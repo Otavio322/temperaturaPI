@@ -161,6 +161,6 @@ canal real do ThingSpeak, use HTTPS de ponta a ponta e nunca exponha a Read/Writ
 
 ## Arduino/ESP32
 
-O firmware em `arduino/ponto_certo_esp32/` já está na versão que publica no ThingSpeak (não fala mais
+O firmware em `arduino/TemperaturaPI_esp32/` já está na versão que publica no ThingSpeak (não fala mais
 com esta API diretamente). Preencha `WIFI_SSID`, `WIFI_PASS`, `CHANNEL_ID` e `WRITE_API_KEY` no topo
 do arquivo antes de gravar no ESP32.
