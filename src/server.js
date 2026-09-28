@@ -6,7 +6,7 @@ const scheduler = require('./services/scheduler');
 async function main() {
   await connectDB();
   scheduler.start(); 
-  const server = app.listen(env.PORT, () => console.log(`Ponto Certo rodando na porta ${env.PORT}`));
+  const server = app.listen(env.PORT, () => console.log(`TemperaturaPI rodando na porta ${env.PORT}`));
 
   const shutdown = (signal) => {
     console.log(`${signal} recebido, encerrando...`);

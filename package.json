@@ -1,5 +1,5 @@
 {
-  "name": "ponto-certo",
+  "name": "TemperaturaPI",
   "version": "1.0.0",
   "description": "Dashboard de Monitoramento Climático e Logístico em Nuvem para Exportadoras de Frutas (Petrolina/Juazeiro) — ESP32 -> ThingSpeak -> API Node.js -> MongoDB Atlas",
   "main": "src/server.js",
