@@ -1,4 +1,4 @@
-# Ponto Certo — Backend (Dashboard de Monitoramento Climático e Logístico)
+# TemperaturaPI — Backend (Dashboard de Monitoramento Climático e Logístico)
 
 Backend do Projeto Integrador (4º módulo ADS): API em nuvem para exportadoras de frutas de
 Petrolina/Juazeiro, que ingere dados de sensores IoT (temperatura/umidade, via ThingSpeak) e dados de
