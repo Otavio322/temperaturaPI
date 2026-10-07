@@ -1,166 +1,168 @@
-# TemperaturaPI — Backend (Dashboard de Monitoramento Climático e Logístico)
+# Climora — Backend (monitoramento climático para propriedades agrícolas)
 
-Backend do Projeto Integrador (4º módulo ADS): API em nuvem para exportadoras de frutas de
-Petrolina/Juazeiro, que ingere dados de sensores IoT (temperatura/umidade, via ThingSpeak) e dados de
-mercado, para apoiar a decisão da janela ideal de colheita e exportação.
+API em Node.js/Express para o monitoramento de temperatura e umidade de setores agrícolas no Vale do
+São Francisco. Sensores (ESP32 + DHT22) publicam no ThingSpeak; este backend consulta os canais,
+grava o histórico e gera alertas quando a leitura sai da faixa ideal da fruta de cada setor.
 
-Este repositório contém **só o backend** (API + firmware do ESP32). O painel web é um projeto
-separado, que consome esta API — ver a seção CORS em [Como rodar](#como-rodar).
+Este repositório é **só o backend** (API + schema do banco). O painel web é um projeto à parte, que
+consome esta API — ver `CORS_ORIGINS` em [Como rodar](#como-rodar).
 
-## Arquitetura (conforme os requisitos)
+## Banco de dados
+
+O schema é exatamente o de `src/db/schema.sql` (MySQL 8.0+ / MariaDB 10.6+), com 8 tabelas:
 
 ```
-ESP32 + DHT22 ──HTTP──▶ Canal do ThingSpeak (camada IoT)
-                                      │
-                                      │ API REST do ThingSpeak (channel feeds) — a cada ≥15s
-                                      ▼
-                         API Node.js/Express (este backend)
-                    ┌─────────────┬─────────────┬──────────────┐
-              limpeza de dados  previsão     dados de       auditoria/
-               (RF05)          (RF06)      mercado (RF03)   relatórios (RF11)
-                    └─────────────┴─────────────┴──────────────┘
-                                      │
-                                      ▼
-                        MongoDB Atlas — banco na nuvem (RF04)
-                                      │
-                                      ▼
-              Painel web (projeto separado) consome esta API via HTTPS/CORS
+usuario ──┐                                   fruta
+          │ usuario_propriedade (N:N)            │
+          └──── propriedade ──── setor ───────────┘
+                                    │
+                                 sensor ──── leitura_climatica
+                                    │
+                                 alerta (referencia sensor e, opcionalmente, a leitura que o gerou)
 ```
 
-**Importante:** o backend **não recebe dados diretamente do ESP32**. O dispositivo publica no
-ThingSpeak; o backend consulta o canal periodicamente (`GET /channels/:id/feeds.json`). Isso está em
-`src/services/thingspeak.js` (cliente) e `src/services/poller.js` + `src/services/scheduler.js`
-(agendamento).
+- **`usuario.perfil`** só tem dois valores no ENUM: `PRODUTOR` e `ADMIN`.
+- **`fruta`** guarda a própria faixa ideal (`temp_min/max`, `umidade_min/max`), com `CHECK` no banco
+  garantindo mínimo < máximo — a API valida isso também (zod), mas o banco é a garantia final,
+  inclusive em updates parciais que a validação de entrada sozinha não pegaria.
+- **`leitura_climatica`** tem uma `UNIQUE KEY (id_sensor, medido_em)`: é o que impede a mesma leitura
+  do ThingSpeak entrar duas vezes — o backend tenta inserir sempre, e o banco ignora a repetida.
+- **`leitura_climatica.valida`**: leituras fisicamente impossíveis (ex.: um defeito momentâneo do
+  sensor) são gravadas com `valida = FALSE` em vez de descartadas, e ficam de fora dos cálculos e dos
+  alertas.
 
-## Atores e perfis de acesso
+## Arquitetura
 
-| Ator (documento de requisitos) | Perfil no sistema | O que pode fazer |
-|---|---|---|
-| Administrador do Sistema | `admin` | Gerencia usuários, permissões, canais/dispositivos e integridade dos dados (RF12) |
-| Analista de Dados | `analista` | Ajusta as faixas ideais por fruta, gera previsões de safra, lança dados de mercado |
-| Produtor/Exportador | `cliente` | Consulta o dashboard dos canais vinculados a ele para decidir colheita/logística |
+```
+ESP32 + DHT22 ──HTTP──▶ Canal do ThingSpeak (público, sem Read API Key)
+                                  │
+                                  │ GET /channels/:id/feeds.json — a cada ≥15s
+                                  ▼
+                   API Node.js/Express (este backend)
+                          │              │
+                  grava em leitura_   compara com a faixa
+                  climatica (com      ideal da fruta do
+                  UNIQUE KEY)         setor → grava em alerta
+                          │
+                          ▼
+                     MySQL/MariaDB
+                          │
+                          ▼
+        Painel web (projeto separado) consome esta API via HTTPS/CORS
+```
 
-O cadastro público (`/api/auth/register`) só cria contas de Produtor/Exportador. Admin e analista são
-criados por um administrador.
+## Perfis de acesso
+
+| Perfil | O que pode fazer |
+|---|---|
+| `ADMIN` | Gerencia usuários, propriedades, frutas, setores e sensores; vê tudo |
+| `PRODUTOR` | Só vê as propriedades/setores/sensores/leituras/alertas das propriedades vinculadas a ele (`usuario_propriedade`); pode marcar alertas como lidos |
+
+O cadastro público (`/api/autenticacao/registrar`) sempre cria um `PRODUTOR`. Um `ADMIN` é criado por
+outro admin (via `/api/usuarios`) ou pelo script de seed.
 
 ## Como rodar
 
-**1. Banco na nuvem (RF04).** Crie uma conta gratuita no [MongoDB Atlas](https://www.mongodb.com/atlas)
-(ou use qualquer outro banco em nuvem/simulador — RNF07), crie um cluster, um usuário e copie a string
-de conexão.
+**1. Banco.** Suba um MySQL/MariaDB (local, Docker, ou um serviço na nuvem — PlanetScale, Railway,
+Aiven, RDS...).
 
-**2. Canal do ThingSpeak (RF01/opcional para começar).** Crie uma conta gratuita em
-[thingspeak.com](https://thingspeak.com), um canal com `field1` = temperatura e `field2` = umidade, e
-anote o **Channel ID** e a **Read API Key**. Sem um canal real, deixe o dispositivo em modo `simulate`
-(padrão) — o backend gera leituras sintéticas plausíveis (RNF07).
-
-**3. Configurar.**
+**2. Configurar.**
 ```bash
 npm install
 cp .env.example .env
 ```
-Preencha `MONGODB_URI`, `JWT_SECRET` e `ENCRYPTION_KEY` (comandos para gerar cada um estão comentados
-no próprio `.env.example`), `ADMIN_EMAIL`/`ADMIN_PASSWORD`, e **`CORS_ORIGINS`** com a origem do painel
-web (o frontend é um projeto à parte — sem essa variável, o navegador bloqueia as chamadas dele para
-esta API).
+Preencha `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`, `JWT_SECRET` e, se o banco exigir TLS, `DB_SSL=true`.
 
-**4. Criar o primeiro administrador, frutas e um canal de exemplo.**
+**3. Criar o schema (isso recria o banco do zero, com os dados de exemplo do próprio arquivo SQL).**
+```bash
+npm run migrate
+```
+
+**4. Garantir um admin com senha de verdade.** O admin de exemplo do `schema.sql` vem com uma senha
+fictícia (não dá pra logar com ela). Preencha `ADMIN_EMAIL`/`ADMIN_PASSWORD` no `.env` e rode:
 ```bash
 npm run seed
 ```
+Isso redefine a senha do admin de exemplo (se o e-mail bater) ou cria um novo.
 
 **5. Subir o servidor.**
 ```bash
 npm run dev      # desenvolvimento (recarrega sozinho)
 npm start        # produção
 ```
-O servidor sobe em `http://localhost:3000` e já começa a consultar os canais ativos e a gerar dados de
-mercado simulados em segundo plano (`src/services/scheduler.js`).
+Sobe em `http://localhost:3000` e já começa a consultar os sensores ativos em segundo plano
+(`src/services/scheduler.js`).
 
-**6. Testes automatizados (RNF05).**
+**6. Testes automatizados.**
 ```bash
-npm test              # roda a suíte
-npm run test:coverage # com cobertura (node --experimental-test-coverage)
+npm test
+npm run test:coverage
 ```
+Os testes em `tests/unit/` cobrem lógica pura (avaliação climática, validação de entrada, token) sem
+precisar de banco. O comportamento contra o banco de verdade (RBAC, `CHECK`s, deduplicação de
+leitura) foi validado manualmente durante o desenvolvimento — veja a seção seguinte se quiser montar
+testes de integração.
 
 ## API
 
-Autenticação: `Authorization: Bearer <token>` (JWT). Não há mais autenticação de dispositivo — o ESP32
-fala apenas com o ThingSpeak.
+Autenticação: `Authorization: Bearer <token>` (JWT).
 
-| Método e rota | Quem | RF/RNF | Descrição |
-|---|---|---|---|
-| `POST /api/auth/register` | público | RF08 | Cria conta de Produtor/Exportador |
-| `POST /api/auth/login` | público | RF08 | Retorna o token JWT |
-| `GET /api/auth/me` | logado | — | Dados do usuário |
-| `POST /api/auth/logout` | logado | — | Invalida todos os tokens da conta |
-| `POST /api/auth/change-password` | logado | — | Troca de senha |
-| `GET /api/devices` / `POST` / `PUT` / `DELETE` | admin (leitura: escopo por perfil) | RF01/RF02 | CRUD dos canais do ThingSpeak (`thingSpeakChannelId`, `thingSpeakReadApiKey`, `simulate`) |
-| `PATCH /api/devices/:id/fruit` | analista, admin | RF06 | Define qual fruta o canal acompanha |
-| `POST /api/devices/:id/poll-now` | admin | RF02 | Consulta o ThingSpeak imediatamente (não espera o agendador) |
-| `GET /api/fruits` / `POST` / `PUT` / `DELETE` | logado / analista+admin | RF06 | Faixas ideais de temperatura/umidade por fruta |
-| `GET /api/readings?device=ID&hours=24&points=120` | logado | RF10 | Histórico climático agregado |
-| `DELETE /api/readings/:deviceId` | admin | — | Apaga o histórico de um canal |
-| `GET /api/dashboard` | logado | RF07 | Painel de BI: leitura atual, alerta, mercado e previsão por fruta |
-| `GET /api/market?fruit=ID` / `POST` / `POST /ingest-now` | logado / analista+admin | RF03/RF04 | Preço e demanda de exportação por fruta |
-| `GET /api/predictions?fruit=ID` / `POST` | logado / analista+admin | RF06 | Gera/consulta a previsão da janela ideal de colheita |
-| `GET /api/reports/security?days=30` | admin | RF11 | Relatório de acessos e incidentes de segurança |
-| `POST /api/reports/quality/run` | admin | RF11/RNF05 | Roda a suíte de testes agora e resume o resultado |
-| `GET /api/lgpd/me/data` | logado | RNF08 | Exporta os próprios dados pessoais (direito de acesso) |
-| `DELETE /api/lgpd/me` | logado | RNF08 | Exclui a própria conta (direito de exclusão, confirmado por senha) |
-| `GET/POST/PUT/DELETE /api/users[/:id]` | admin | RF12 | Gestão de usuários e permissões |
+| Método e rota | Quem | Descrição |
+|---|---|---|
+| `POST /api/autenticacao/registrar` | público | Cria conta `PRODUTOR` |
+| `POST /api/autenticacao/login` | público | Retorna o token JWT |
+| `GET /api/autenticacao/eu` | logado | Dados do usuário |
+| `POST /api/autenticacao/trocar-senha` | logado | Troca de senha |
+| `GET/POST/PUT/DELETE /api/usuarios[/:id]` | admin | Gestão de usuários |
+| `GET /api/propriedades` / `GET /:id` | logado (escopo por perfil) | Lista/detalha propriedades |
+| `POST/PUT/DELETE /api/propriedades[/:id]` | admin | CRUD de propriedades e seus vínculos (`idsUsuarios`) |
+| `GET /api/frutas` | logado | Lista as faixas ideais |
+| `POST/PUT/DELETE /api/frutas[/:id]` | admin | CRUD de frutas |
+| `GET /api/setores?idPropriedade=ID` | logado (escopo) | Lista setores de uma propriedade |
+| `POST/PUT/DELETE /api/setores[/:id]` | admin | CRUD de setores |
+| `GET /api/sensores?idPropriedade=ID` | logado (escopo) | Lista sensores de uma propriedade |
+| `POST/PUT/DELETE /api/sensores[/:id]` | admin | CRUD de sensores |
+| `POST /api/sensores/:id/consultar-agora` | admin | Consulta o ThingSpeak (ou simula) na hora, sem esperar o agendador |
+| `GET /api/leituras/:idSensor?horas=24&pontos=120` | logado (escopo) | Histórico climático agregado |
+| `DELETE /api/leituras/:idSensor` | admin | Apaga o histórico de um sensor |
+| `GET /api/painel` | logado (escopo) | Leitura mais recente de cada sensor visível + situação |
+| `GET /api/alertas?apenasNaoLidos=true&limite=50` | logado (escopo) | Lista alertas |
+| `PATCH /api/alertas/:id/lido` | logado (escopo) | Marca um alerta como lido |
 
-## Rastreabilidade dos requisitos
+## O que ficou de fora, por causa do schema
 
-| ID | Onde está implementado |
-|---|---|
-| RF01 | `src/services/thingspeak.js` (modo simulado) — o ESP32 publica no ThingSpeak, fora deste backend |
-| RF02 | `src/services/poller.js`, `src/services/scheduler.js`, `src/routes/devices.routes.js` |
-| RF03 | `src/services/marketData.js`, `src/routes/market.routes.js` |
-| RF04 | MongoDB Atlas (`src/config/db.js`) armazenando `Reading` e `MarketData` |
-| RF05 | `src/services/dataCleaning.js` (+ testes em `tests/unit/dataCleaning.test.js`) |
-| RF06 | `src/services/prediction.js`, `src/routes/predictions.routes.js` |
-| RF07 | `GET /api/dashboard` (clima + mercado + previsão), `GET /api/readings` (histórico) |
-| RF08 | `src/middleware/auth.js` (JWT + RBAC via `authorize(...roles)`) |
-| RF09 | `src/utils/status.js` (`evaluate`) + alertas registrados em `src/services/poller.js` |
-| RF10 | TTL de 90 dias em `Reading`, histórico de `MarketData` e `Prediction` |
-| RF11 | `src/routes/reports.routes.js` + `src/models/AuditLog.js` |
-| RF12 | `src/routes/users.routes.js` |
-| RNF01 | Autenticação sem estado (JWT) — permite escalar horizontalmente; ver observação sobre o rate limit abaixo |
-| RNF02 | `src/config/crypto.js` (AES-256-GCM) para a Read API Key do ThingSpeak; HTTPS/HSTS via Helmet para o trânsito |
-| RNF03 | Encerramento gracioso (`src/server.js`), reconexão automática do Mongoose |
-| RNF04 | Índices em `Reading`/`MarketData`/`Prediction`; aviso de log para requisições acima de `SLOW_REQUEST_MS` (`src/app.js`) |
-| RNF05 | `tests/unit/*.test.js` + `npm test` / `npm run test:coverage` |
-| RNF06 | Mensagens de erro em português, claras, em toda a API |
-| RNF07 | `simulate: true` nos canais (RF01/RF02) e `MARKET_SIMULATE` (RF03) — roda sem nenhum serviço externo real |
-| RNF08 | `src/routes/lgpd.routes.js` (acesso e exclusão dos próprios dados) |
-| RNF09 | Estrutura modular `src/{config,models,middleware,routes,services,utils}` |
-| RNF10 | `authorize()` é apenas uma checagem de array em memória, sem custo relevante |
-| RNF11 | `THINGSPEAK_POLL_INTERVAL_MS` validado com mínimo de 15000 ms em `src/config/env.js` |
+Essas peças existiam numa versão anterior deste backend (sobre MongoDB) e **não foram portadas**,
+porque o schema enviado não tem tabela para elas. Se quiser alguma de volta, dá pra estender o SQL:
+
+- **Terceiro perfil (analista de dados):** o ENUM de `usuario.perfil` só tem `PRODUTOR`/`ADMIN`. Hoje
+  o `ADMIN` acumula a função de ajustar as faixas ideais das frutas.
+- **Read API Key do ThingSpeak por sensor:** a tabela `sensor` só tem `thingspeak_channel_id`. O
+  backend assume canal público. Pra canal privado, seria preciso uma coluna a mais (e criptografá-la
+  em repouso, como esse projeto já fez numa versão anterior).
+- **Revogação de token/bloqueio de conta por tentativas:** `usuario` não tem coluna de versão de
+  token nem de tentativas falhas. A sessão expira pelo `JWT_EXPIRES_IN`; força bruta é mitigada só
+  pelo rate limit (em memória, por IP) em `/api/autenticacao`.
+- **Dados de mercado, previsão de safra, auditoria e LGPD:** não há tabelas `mercado`, `previsao` nem
+  `log_auditoria` neste schema.
 
 ## Segurança implementada
 
-- **Senhas** com bcrypt (custo 12) e política mínima (10 caracteres, maiúscula, minúscula e número).
-- **JWT** com expiração; a cada requisição o servidor confere se a conta segue ativa e se o token não
-  foi revogado (logout, troca de senha, mudança de perfil ou desativação derrubam as sessões).
-- **Força bruta:** limite de tentativas por IP e bloqueio da conta por 15 min após 5 senhas erradas.
-- **RBAC** em cada rota (`authorize('admin')`, etc.) e escopo de dados: Produtor/Exportador só enxerga
-  os canais vinculados a ele.
-- **Entrada validada** com zod; `express-mongo-sanitize` contra injeção NoSQL; corpo limitado a 10 kB.
-- **Credenciais do ThingSpeak criptografadas em repouso** (AES-256-GCM); nunca retornadas pela API,
-  nem em texto puro nem criptografadas — só uma máscara (`••••1234`) para conferência.
-- **Cabeçalhos** via Helmet (CSP restritiva, HSTS) e CORS fechado por padrão.
-- **Auditoria** de login (sucesso/falha), bloqueios de conta e ações administrativas, usada no
-  relatório de segurança (RF11).
-- **LGPD/GDPR:** minimização de dados nos modelos, endpoint de exportação e de exclusão da própria
-  conta.
+- Senhas com bcrypt (custo 12) e política mínima (10 caracteres, maiúscula, minúscula, número).
+- Todo SQL é parametrizado (`mysql2` com *named placeholders*) — sem concatenar valor de usuário em
+  string de consulta.
+- RBAC em cada rota (`autorizar('ADMIN')`) e escopo de dados por `usuario_propriedade` para `PRODUTOR`.
+- Entrada validada com zod (`.strict()` — campo extra, tipo `perfil` num cadastro público, é rejeitado).
+- Restrições de integridade do próprio banco (`CHECK`, `UNIQUE`, `FOREIGN KEY`) como última linha de
+  defesa, com o `errorHandler` traduzindo a violação numa resposta HTTP clara.
+- Cabeçalhos via Helmet; CORS fechado por padrão (requer `CORS_ORIGINS` explícito).
+- Limite de requisições por IP, mais restrito em `/api/autenticacao`.
 
-**Pontos a reforçar conforme o uso:** o rate limit fica em memória — com várias instâncias do servidor,
-use um store compartilhado (Redis); não há recuperação de senha por e-mail nem 2FA; ao configurar um
-canal real do ThingSpeak, use HTTPS de ponta a ponta e nunca exponha a Read/Write Key no repositório.
+**Pontos a reforçar conforme o uso:** o rate limit fica em memória — com várias instâncias do
+servidor, use um store compartilhado (Redis); não há recuperação de senha por e-mail nem 2FA.
 
 ## Arduino/ESP32
 
-O firmware em `arduino/temperatura_pi_esp32/` já está na versão que publica no ThingSpeak (não fala mais
-com esta API diretamente). Preencha `WIFI_SSID`, `WIFI_PASS`, `CHANNEL_ID` e `WRITE_API_KEY` no topo
-do arquivo antes de gravar no ESP32.
+O firmware em `arduino/climora_esp32/` publica no ThingSpeak (`field1` = temperatura,
+`field2` = umidade) e não fala com esta API diretamente — é o mesmo sketch de antes, porque a
+integração do backend com o ThingSpeak não mudou, só a forma como os dados são guardados depois.
+Preencha `WIFI_SSID`, `WIFI_PASS`, `CHANNEL_ID` e `WRITE_API_KEY` no topo do arquivo.

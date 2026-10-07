@@ -1,21 +1,21 @@
 const env = require('./config/env');
-const { connectDB } = require('./config/db');
+const { conectarBanco } = require('./config/db');
 const app = require('./app');
-const scheduler = require('./services/scheduler');
+const agendador = require('./services/scheduler');
 
 async function main() {
-  await connectDB();
-  scheduler.start(); 
-  const server = app.listen(env.PORT, () => console.log(`TemperaturaPI rodando na porta ${env.PORT}`));
+  await conectarBanco();
+  agendador.iniciar();
+  const servidor = app.listen(env.PORT, () => console.log(`Climora rodando na porta ${env.PORT}`));
 
-  const shutdown = (signal) => {
-    console.log(`${signal} recebido, encerrando...`);
-    scheduler.stop();
-    server.close(() => process.exit(0));
+  const encerrar = (sinal) => {
+    console.log(`${sinal} recebido, encerrando...`);
+    agendador.parar();
+    servidor.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();
   };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => encerrar('SIGTERM'));
+  process.on('SIGINT', () => encerrar('SIGINT'));
 }
 
 main().catch((err) => {

@@ -1,9 +1,23 @@
-const mongoose = require('mongoose');
+const mysql = require('mysql2/promise');
 const env = require('./env');
 
-async function connectDB() {
-  await mongoose.connect(env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
-  console.log('MongoDB conectado');
+const pool = mysql.createPool({
+  host: env.DB_HOST,
+  port: env.DB_PORT,
+  user: env.DB_USER,
+  password: env.DB_PASSWORD,
+  database: env.DB_NAME,
+  ssl: env.DB_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
+  connectionLimit: env.DB_POOL_SIZE,
+  dateStrings: false,
+  namedPlaceholders: true,
+});
+
+async function conectarBanco() {
+  const conexao = await pool.getConnection();
+  await conexao.ping();
+  conexao.release();
+  console.log('MySQL conectado');
 }
 
-module.exports = { connectDB };
+module.exports = { pool, conectarBanco };

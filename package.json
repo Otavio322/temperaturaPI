@@ -1,29 +1,27 @@
 {
-  "name": "TemperaturaPI",
+  "name": "climora",
   "version": "1.0.0",
-  "description": "Dashboard de Monitoramento Climático e Logístico em Nuvem para Exportadoras de Frutas (Petrolina/Juazeiro) — ESP32 -> ThingSpeak -> API Node.js -> MongoDB Atlas",
+  "description": "Climora — monitoramento de temperatura e umidade para propriedades agrícolas do Vale do São Francisco (MySQL + ThingSpeak)",
   "main": "src/server.js",
+  "private": true,
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "migrate": "node src/scripts/migrate.js",
     "seed": "node src/scripts/seed.js",
     "test": "node --test tests/unit/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage tests/unit/*.test.js"
   },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
     "express": "^4.22.3",
-    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.10.1",
+    "mysql2": "^3.16.1",
     "zod": "^4.6.5"
-  },
-  "private": true,
-  "engines": {
-    "node": ">=20"
   }
 }
