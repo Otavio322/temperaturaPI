@@ -2,32 +2,10 @@
 -- CLIMORA - Modelo de dados (MySQL 8.0+ / compatível com Clever Cloud)
 -- Monitoramento de temperatura e umidade - Vale do Sao Francisco
 -- =====================================================================
--- DIFERENÇA em relação à versão original: este arquivo NÃO cria nem
--- apaga o banco de dados. O Clever Cloud (e a maioria dos provedores de
--- MySQL gerenciado) já provisiona o banco pra você e NÃO dá permissão
--- de "CREATE DATABASE" / "DROP DATABASE" ao usuário do addon — só
--- permissão para mexer nas tabelas de dentro do banco que já existe.
---
--- Para "resetar" o banco sem poder apagá-lo inteiro, a saída é apagar e
--- recriar cada TABELA (DROP TABLE), o que é permitido. É isso que o
--- bloco abaixo faz, na ordem inversa das dependências (FOREIGN KEY),
--- com os checks de FK temporariamente desligados pra não travar na
--- ordem.
---
--- COMO RODAR NO CLEVER CLOUD:
---   1) Crie o addon MySQL (painel: Create an add-on > MySQL).
---   2) Pegue host/porta/usuário/senha/nome do banco no painel do addon
---      (ou via env vars MYSQL_ADDON_*).
---   3) Rode este arquivo contra ESSE banco, por exemplo:
---        mysql -h HOST -P PORTA -u USUARIO -p NOME_DO_BANCO < climora_modelo.sql
---      (ou cole o conteúdo no "Console SQL" / phpMyAdmin do painel deles)
---
--- ATENÇÃO - versão do MySQL: os CHECK (ck_fruta_temp, ck_fruta_umidade,
--- ck_setor_area, ck_leitura_umidade) só são aplicados de verdade a
--- partir do MySQL 8.0.16. O Clever Cloud, em planos dedicados, permite
--- escolher MySQL 5.7 OU 8.0 — escolha 8.0 ao criar o addon, senão esses
--- CHECKs são aceitos na sintaxe mas silenciosamente ignorados pelo banco.
--- =====================================================================
+
+CREATE DATABASE IF NOT EXISTS climora;
+
+USE climora;
 
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS alerta;
