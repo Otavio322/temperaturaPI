@@ -1,15 +1,44 @@
 -- =====================================================================
--- CLIMORA - Modelo de dados enxuto (MySQL 8.0+)
+-- CLIMORA - Modelo de dados (MySQL 8.0+ / compatível com Clever Cloud)
 -- Monitoramento de temperatura e umidade - Vale do Sao Francisco
 -- =====================================================================
--- Ordem: 1) criar banco  2) criar tabelas  3) dados de exemplo  4) consultas
+-- DIFERENÇA em relação à versão original: este arquivo NÃO cria nem
+-- apaga o banco de dados. O Clever Cloud (e a maioria dos provedores de
+-- MySQL gerenciado) já provisiona o banco pra você e NÃO dá permissão
+-- de "CREATE DATABASE" / "DROP DATABASE" ao usuário do addon — só
+-- permissão para mexer nas tabelas de dentro do banco que já existe.
+--
+-- Para "resetar" o banco sem poder apagá-lo inteiro, a saída é apagar e
+-- recriar cada TABELA (DROP TABLE), o que é permitido. É isso que o
+-- bloco abaixo faz, na ordem inversa das dependências (FOREIGN KEY),
+-- com os checks de FK temporariamente desligados pra não travar na
+-- ordem.
+--
+-- COMO RODAR NO CLEVER CLOUD:
+--   1) Crie o addon MySQL (painel: Create an add-on > MySQL).
+--   2) Pegue host/porta/usuário/senha/nome do banco no painel do addon
+--      (ou via env vars MYSQL_ADDON_*).
+--   3) Rode este arquivo contra ESSE banco, por exemplo:
+--        mysql -h HOST -P PORTA -u USUARIO -p NOME_DO_BANCO < climora_modelo.sql
+--      (ou cole o conteúdo no "Console SQL" / phpMyAdmin do painel deles)
+--
+-- ATENÇÃO - versão do MySQL: os CHECK (ck_fruta_temp, ck_fruta_umidade,
+-- ck_setor_area, ck_leitura_umidade) só são aplicados de verdade a
+-- partir do MySQL 8.0.16. O Clever Cloud, em planos dedicados, permite
+-- escolher MySQL 5.7 OU 8.0 — escolha 8.0 ao criar o addon, senão esses
+-- CHECKs são aceitos na sintaxe mas silenciosamente ignorados pelo banco.
 -- =====================================================================
 
-DROP DATABASE IF EXISTS climora;
-CREATE DATABASE climora
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-USE climora;
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS alerta;
+DROP TABLE IF EXISTS leitura_climatica;
+DROP TABLE IF EXISTS sensor;
+DROP TABLE IF EXISTS setor;
+DROP TABLE IF EXISTS usuario_propriedade;
+DROP TABLE IF EXISTS fruta;
+DROP TABLE IF EXISTS propriedade;
+DROP TABLE IF EXISTS usuario;
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
 -- 1. USUARIO
@@ -26,7 +55,7 @@ CREATE TABLE usuario (
   criado_em       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id_usuario),
   UNIQUE KEY uq_usuario_email (email)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 2. PROPRIEDADE
@@ -40,7 +69,7 @@ CREATE TABLE propriedade (
   latitude       DECIMAL(9,6)  NULL,
   longitude      DECIMAL(9,6)  NULL,
   PRIMARY KEY (id_propriedade)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 3. USUARIO_PROPRIEDADE  (relacao N:N)
@@ -59,7 +88,7 @@ CREATE TABLE usuario_propriedade (
   CONSTRAINT fk_up_propriedade
     FOREIGN KEY (id_propriedade) REFERENCES propriedade (id_propriedade)
     ON DELETE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 4. FRUTA (cultura)
@@ -78,7 +107,7 @@ CREATE TABLE fruta (
   CONSTRAINT ck_fruta_temp    CHECK (temp_min < temp_max),
   CONSTRAINT ck_fruta_umidade CHECK (umidade_min < umidade_max
                                      AND umidade_min >= 0 AND umidade_max <= 100)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 5. SETOR
@@ -98,7 +127,7 @@ CREATE TABLE setor (
   CONSTRAINT fk_setor_fruta
     FOREIGN KEY (id_fruta)       REFERENCES fruta (id_fruta),
   CONSTRAINT ck_setor_area CHECK (area_ha > 0)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 6. SENSOR
@@ -117,7 +146,7 @@ CREATE TABLE sensor (
   CONSTRAINT fk_sensor_setor
     FOREIGN KEY (id_setor) REFERENCES setor (id_setor)
     ON DELETE CASCADE
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 7. LEITURA_CLIMATICA
@@ -138,7 +167,7 @@ CREATE TABLE leitura_climatica (
     FOREIGN KEY (id_sensor) REFERENCES sensor (id_sensor)
     ON DELETE CASCADE,
   CONSTRAINT ck_leitura_umidade CHECK (umidade BETWEEN 0 AND 100)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 -- 8. ALERTA
@@ -162,7 +191,7 @@ CREATE TABLE alerta (
   CONSTRAINT fk_alerta_leitura
     FOREIGN KEY (id_leitura) REFERENCES leitura_climatica (id_leitura)
     ON DELETE SET NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Indices para as consultas mais comuns (historico por sensor / alertas nao lidos)
 CREATE INDEX idx_leitura_hora ON leitura_climatica (medido_em);

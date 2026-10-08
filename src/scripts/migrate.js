@@ -12,6 +12,9 @@ async function main() {
     port: Number(process.env.DB_PORT) || 3306,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD || '',
+    // O schema.sql não dá mais "USE banco" (provedores como o Clever Cloud não deixam o usuário do
+    // addon criar/trocar de banco) — então quem diz qual banco usar agora é esta conexão.
+    database: process.env.DB_NAME,
     multipleStatements: true, // só este script liga isso — nunca em consultas vindas de fora
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
   });
