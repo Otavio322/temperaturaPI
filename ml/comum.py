@@ -91,3 +91,42 @@ def montar_features(horaria, previsoes, horizonte):
     obrigatorias = [c for c in dados.columns if c != "alvo"]
     dados = dados.dropna(subset=obrigatorias)
     return juntar_previsoes(dados, previsoes, horizonte)
+
+
+INSERIR_PREVISAO = text(
+    "INSERT INTO previsao_temperatura (id_sensor, gerada_em, valida_para, horizonte_h, temperatura_prevista, modelo) "
+    "VALUES (:sensor, :gerada, :valida, :horizonte, :temp, :modelo) "
+    "ON DUPLICATE KEY UPDATE temperatura_prevista = VALUES(temperatura_prevista)"
+)
+
+
+def listar_sensores_ativos(con):
+    with con.connect() as c:
+        linhas = c.execute(text("SELECT id_sensor FROM sensor WHERE status = 'ATIVO' ORDER BY id_sensor")).fetchall()
+    return [linha[0] for linha in linhas]
+
+
+def minutos_sem_leitura(con, id_sensor):
+    sql = text(
+        "SELECT TIMESTAMPDIFF(MINUTE, MAX(medido_em), NOW()) FROM leitura_climatica "
+        "WHERE id_sensor = :id AND valida = TRUE"
+    )
+    with con.connect() as c:
+        return c.execute(sql, {"id": id_sensor}).scalar()
+
+
+def gravar_previsao(con, id_sensor, gerada, horizonte, valor, modelo):
+    valida = gerada + pd.Timedelta(hours=horizonte)
+    with con.begin() as c:
+        c.execute(
+            INSERIR_PREVISAO,
+            {
+                "sensor": id_sensor,
+                "gerada": gerada.to_pydatetime(),
+                "valida": valida.to_pydatetime(),
+                "horizonte": horizonte,
+                "temp": round(float(valor), 2),
+                "modelo": modelo,
+            },
+        )
+    return valida
