@@ -1,6 +1,6 @@
 const env = require('../config/env');
 const { consultarTodosOsSensores, verificarSensoresOffline } = require('./poller');
-const { coletarTodas } = require('./climapi');
+const { coletarTodas, logarVariaveisDisponiveis } = require('./climapi');
 
 let temporizadores = [];
 
@@ -17,6 +17,8 @@ function iniciar() {
     t3.unref();
     temporizadores.push(t3);
     coletar();
+  } else if (env.CLIMAPI_CONSUMER_KEY && env.CLIMAPI_CONSUMER_SECRET) {
+    logarVariaveisDisponiveis().catch((e) => console.error('Erro ao listar variáveis da ClimAPI:', e.message));
   }
   consultarTodosOsSensores().catch((e) => console.error('Erro no agendador do ThingSpeak:', e.message));
 }

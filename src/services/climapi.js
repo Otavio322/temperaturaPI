@@ -86,6 +86,11 @@ async function coletarTodas({ forcar = false } = {}) {
   return resultados;
 }
 
+async function logarVariaveisDisponiveis() {
+  const variaveis = await listarVariaveis();
+  console.log('ClimAPI: variáveis disponíveis (copie os nomes desejados para CLIMAPI_VARIAVEIS, separados por vírgula):', JSON.stringify(variaveis));
+}
+
 async function reprocessarColetas() {
   await previsoesRepo.limparPontos();
   const coletas = await previsoesRepo.listarColetasBrutas();
@@ -96,4 +101,4 @@ async function reprocessarColetas() {
   return { coletas: coletas.length, pontos: total };
 }
 
-module.exports = { listarVariaveis, listarExecucoes, coletarTodas, reprocessarColetas };
+module.exports = { listarVariaveis, listarExecucoes, coletarTodas, reprocessarColetas, logarVariaveisDisponiveis };
