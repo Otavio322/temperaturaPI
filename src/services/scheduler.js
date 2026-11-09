@@ -1,5 +1,6 @@
 const env = require('../config/env');
 const { consultarTodosOsSensores, verificarSensoresOffline } = require('./poller');
+const { coletarTodas } = require('./climapi');
 
 let temporizadores = [];
 
@@ -9,6 +10,14 @@ function iniciar() {
   const t2 = setInterval(() => verificarSensoresOffline().catch((e) => console.error('Erro ao verificar sensores offline:', e.message)), Math.max(60000, env.THINGSPEAK_POLL_INTERVAL_MS));
   t1.unref(); t2.unref();
   temporizadores = [t1, t2];
+
+  if (env.climapiAtivo) {
+    const coletar = () => coletarTodas().catch((e) => console.error('Erro no agendador da ClimAPI:', e.message));
+    const t3 = setInterval(coletar, env.CLIMAPI_INTERVALO_HORAS * 3600 * 1000);
+    t3.unref();
+    temporizadores.push(t3);
+    coletar();
+  }
   consultarTodosOsSensores().catch((e) => console.error('Erro no agendador do ThingSpeak:', e.message));
 }
 
