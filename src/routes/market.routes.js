@@ -1,29 +1,32 @@
 const router = require('express').Router();
-const MarketData = require('../models/MarketData');
-const Fruit = require('../models/Fruit');
+const mercadoRepo = require('../repositorios/mercado');
+const frutasRepo = require('../repositorios/frutas');
 const schemas = require('../validators');
-const { validate } = require('../middleware/validate');
-const { authenticate, authorize } = require('../middleware/auth');
-const { asyncHandler, HttpError } = require('../utils/httpError');
+const { validar } = require('../middleware/validate');
+const { autenticar, autorizar } = require('../middleware/auth');
+const { assincrono, ErroHttp } = require('../utils/httpError');
 const { ingestMarketData } = require('../services/marketData');
 
-router.use(authenticate);
+router.use(autenticar);
 
-router.get('/', validate(schemas.marketQuery, 'query'), asyncHandler(async (req, res) => {
-  const { fruit, limit } = req.query;
-  const entries = await MarketData.find({ fruit }).sort({ recordedAt: -1 }).limit(limit);
-  res.json({ entries: entries.reverse() });
+router.get('/', validar(schemas.consultaMercado, 'query'), assincrono(async (req, res) => {
+  const { idFruta, limite } = req.query;
+  const dados = await mercadoRepo.listar({ idFruta, limite });
+  res.json({ dados });
 }));
 
-
-router.post('/', authorize('analista', 'admin'), validate(schemas.marketCreate), asyncHandler(async (req, res) => {
-  if (!(await Fruit.exists({ _id: req.body.fruit }))) throw new HttpError(400, 'Fruta inexistente');
-  const entry = await MarketData.create({ ...req.body, source: 'externo' });
-  res.status(201).json({ entry });
+router.post('/', autorizar('ADMIN'), validar(schemas.criarMercado), assincrono(async (req, res) => {
+  if (!(await frutasRepo.buscarPorId(req.body.idFruta))) throw new ErroHttp(400, 'Fruta inexistente');
+  const entrada = await mercadoRepo.criar({
+    idFruta: req.body.idFruta,
+    price: req.body.price,
+    demandIndex: req.body.demandIndex,
+    source: req.body.source || 'EXTERNO',
+  });
+  res.status(201).json({ entrada });
 }));
 
-
-router.post('/ingest-now', authorize('analista', 'admin'), asyncHandler(async (req, res) => {
+router.post('/ingest-now', autorizar('ADMIN'), assincrono(async (req, res) => {
   const created = await ingestMarketData();
   res.json({ ok: true, created: created.length });
 }));

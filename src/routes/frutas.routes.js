@@ -4,10 +4,16 @@ const schemas = require('../validators');
 const { validar, idValido } = require('../middleware/validate');
 const { autenticar, autorizar } = require('../middleware/auth');
 const { assincrono, ErroHttp } = require('../utils/httpError');
+const propriedadesRepo = require('../repositorios/propriedades');
 
 router.use(autenticar);
 
-router.get('/', assincrono(async (req, res) => res.json({ frutas: await frutasRepo.listar() })));
+router.get('/', assincrono(async (req, res) => {
+  const frutas = await frutasRepo.listar();
+  if (req.usuario.perfil !== 'ANALISTA') return res.json({ frutas });
+  const idsFrutas = await propriedadesRepo.listarIdsFrutasVinculadas(req.usuario.id_usuario);
+  res.json({ frutas: frutas.filter((f) => idsFrutas.includes(Number(f.id_fruta))) });
+}));
 
 router.post('/', autorizar('ADMIN'), validar(schemas.criarFruta), assincrono(async (req, res) => {
   res.status(201).json({ fruta: await frutasRepo.criar(req.body) });

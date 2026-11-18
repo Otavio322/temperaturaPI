@@ -20,6 +20,32 @@ test('registrar aceita payload válido', () => {
   assert.equal(schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', senha: 'SenhaForte123' }).success, true);
 });
 
+test('criarUsuario aceita o perfil de analista', () => {
+  assert.equal(schemas.criarUsuario.safeParse({
+    nome: 'Ana',
+    email: 'a@x.com',
+    senha: 'SenhaForte123',
+    perfil: 'ANALISTA',
+  }).success, true);
+});
+
+test('configuração do modelo exige limiares coerentes', () => {
+  const base = { pesoClima: 0.7, limiarColher: 75, limiarMonitorar: 45 };
+  assert.equal(schemas.atualizarConfiguracaoModelo.safeParse(base).success, true);
+  assert.equal(schemas.atualizarConfiguracaoModelo.safeParse({
+    ...base,
+    limiarMonitorar: 75,
+  }).success, false);
+  assert.equal(schemas.atualizarConfiguracaoModelo.safeParse({
+    ...base,
+    pesoClima: 1.1,
+  }).success, false);
+  assert.equal(schemas.atualizarConfiguracaoModelo.safeParse({
+    ...base,
+    pesoClima: 0.7001,
+  }).success, false);
+});
+
 test('criarFruta rejeita temp_min >= temp_max', () => {
   const r = schemas.criarFruta.safeParse({ nome: 'Manga', tempMin: 30, tempMax: 20, umidadeMin: 10, umidadeMax: 90 });
   assert.equal(r.success, false);

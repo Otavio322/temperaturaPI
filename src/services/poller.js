@@ -2,35 +2,45 @@ const env = require('../config/env');
 const sensoresRepo = require('../repositorios/sensores');
 const leiturasRepo = require('../repositorios/leituras');
 const alertasRepo = require('../repositorios/alertas');
-const { buscarFeeds } = require('./thingspeak');
+const thingspeak = require('./thingspeak');
+const { cleanReading } = require('./dataCleaning');
 const { montarAlertas } = require('../utils/avaliacaoClimatica');
 
-const FAIXA_TEMP_FISICA = [-40, 80];
-const FAIXA_UMIDADE_FISICA = [0, 100];
-const dentroDaFaixa = (n, [min, max]) => Number.isFinite(n) && n >= min && n <= max;
-
 async function consultarSensor(sensor) {
-  const feeds = await buscarFeeds(sensor);
+  const feeds = await thingspeak.buscarFeeds(sensor);
   let gravadas = 0;
   let maisRecente = null;
+  let anterior = await leiturasRepo.maisRecenteValida(sensor.id_sensor);
 
   for (const feed of feeds) {
     const temperatura = Number(feed.field1);
     const umidade = Number(feed.field2);
     const medidoEm = feed.created_at ? new Date(feed.created_at) : new Date();
-    const valida = dentroDaFaixa(temperatura, FAIXA_TEMP_FISICA) && dentroDaFaixa(umidade, FAIXA_UMIDADE_FISICA);
+    const limpeza = cleanReading(
+      { temperature: temperatura, humidity: umidade },
+      anterior ? { temperature: Number(anterior.temperatura), humidity: Number(anterior.umidade) } : null
+    );
 
-    const leitura = await leiturasRepo.criarSeNova({ idSensor: sensor.id_sensor, medidoEm, temperatura, umidade, valida });
-    if (!leitura) continue; 
+    const temperaturaPersistida = limpeza.ok ? limpeza.temperature : temperatura;
+    const umidadePersistida = limpeza.ok ? limpeza.humidity : umidade;
+    const leitura = await leiturasRepo.criarSeNova({
+      idSensor: sensor.id_sensor,
+      medidoEm,
+      temperatura: temperaturaPersistida,
+      umidade: umidadePersistida,
+      valida: limpeza.ok,
+    });
+    if (!leitura) continue;
     gravadas += 1;
     if (!maisRecente || medidoEm > maisRecente) maisRecente = medidoEm;
 
-    if (valida) {
+    if (limpeza.ok) {
       const faixa = { temp_min: sensor.temp_min, temp_max: sensor.temp_max, umidade_min: sensor.umidade_min, umidade_max: sensor.umidade_max };
-      const alertas = montarAlertas({ temperatura, umidade, faixa, nomeFruta: sensor.fruta_nome });
+      const alertas = montarAlertas({ temperatura: limpeza.temperature, umidade: limpeza.humidity, faixa, nomeFruta: sensor.fruta_nome });
       for (const alerta of alertas) {
         await alertasRepo.criar({ idSensor: sensor.id_sensor, idLeitura: leitura.id_leitura, ...alerta });
       }
+      anterior = leitura;
     }
   }
 

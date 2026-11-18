@@ -93,8 +93,18 @@ async function definirUsuariosVinculados(idPropriedade, idsUsuarios) {
     conexao.release();
   }
 }
+async function listarIdsFrutasVinculadas(idUsuario) {
+  const [linhas] = await pool.execute(
+    `SELECT DISTINCT s.id_fruta FROM usuario_propriedade up
+     JOIN setor s ON s.id_propriedade = up.id_propriedade
+     WHERE up.id_usuario = :idUsuario`,
+    { idUsuario }
+  );
+  return linhas.map((linha) => Number(linha.id_fruta));
+}
 
 module.exports = {
   criar, buscarPorId, listar, atualizar, excluir,
-  usuarioTemAcesso, listarUsuariosVinculados, vincularUsuario, desvincularUsuario, definirUsuariosVinculados,
+  usuarioTemAcesso, listarIdsFrutasVinculadas, listarUsuariosVinculados,
+  vincularUsuario, desvincularUsuario, definirUsuariosVinculados,
 };

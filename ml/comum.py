@@ -4,6 +4,8 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
+from limpeza import limpar_leituras_climaticas
+
 LAGS = (1, 2, 3, 6, 12, 24)
 PASSO_GFS = "6h"
 
@@ -39,14 +41,10 @@ def carregar_leituras(con, id_sensor):
     df = pd.read_sql(sql, con, params={"id": id_sensor}, parse_dates=["medido_em"])
     if df.empty:
         raise SystemExit(f"Sensor {id_sensor} sem leituras válidas")
-    horaria = (
-        df.set_index("medido_em")[["temperatura", "umidade"]]
-        .astype(float)
-        .resample("1h")
-        .mean()
-        .interpolate(limit=3)
-    )
-    return horaria.dropna()
+    horaria = limpar_leituras_climaticas(df)
+    if horaria.empty:
+        raise SystemExit(f"Sensor {id_sensor} sem leituras climáticas consistentes")
+    return horaria
 
 
 def carregar_previsoes(con, id_propriedade):

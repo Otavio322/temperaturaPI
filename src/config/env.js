@@ -34,6 +34,10 @@ const schema = z.object({
   ADMIN_NAME: z.string().default('Administrador'),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(10).optional(),
+
+  ENCRYPTION_KEY: z.string().length(64),   // sem .default: veja o aviso abaixo
+MARKET_SIMULATE: z.enum(['true', 'false']).default('true'),
+MARKET_POLL_INTERVAL_MS: z.coerce.number().int().min(60000).default(3600000),
 });
 
 const bruto = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== ''));

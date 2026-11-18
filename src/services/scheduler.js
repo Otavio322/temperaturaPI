@@ -1,6 +1,7 @@
 const env = require('../config/env');
 const { consultarTodosOsSensores, verificarSensoresOffline } = require('./poller');
 const { coletarTodas, logarVariaveisDisponiveis } = require('./climapi');
+const { ingestMarketData } = require('./marketData');
 
 let temporizadores = [];
 
@@ -20,6 +21,15 @@ function iniciar() {
   } else if (env.CLIMAPI_CONSUMER_KEY && env.CLIMAPI_CONSUMER_SECRET) {
     logarVariaveisDisponiveis().catch((e) => console.error('Erro ao listar variáveis da ClimAPI:', e.message));
   }
+
+  if (env.MARKET_SIMULATE === 'true') {
+    const mercado = () => ingestMarketData().catch((e) => console.error('Erro no agendador de mercado:', e.message));
+    const t4 = setInterval(mercado, env.MARKET_POLL_INTERVAL_MS);
+    t4.unref();
+    temporizadores.push(t4);
+    mercado();
+  }
+
   consultarTodosOsSensores().catch((e) => console.error('Erro no agendador do ThingSpeak:', e.message));
 }
 

@@ -43,6 +43,13 @@ app.use('/api/sensores', require('./routes/sensores.routes'));
 app.use('/api/leituras', require('./routes/leituras.routes'));
 app.use('/api/painel', require('./routes/leituras.routes').painel);
 app.use('/api/alertas', require('./routes/alertas.routes'));
+app.use('/api/mercado', require('./routes/market.routes'));
+app.use('/api/market', require('./routes/market.routes'));
+app.use('/api/previsoes', require('./routes/predictions.routes'));
+app.use('/api/relatorios', require('./routes/relatorios.routes'));
+app.use('/api/reports', require('./routes/relatorios.routes'));
+app.use('/api/reportes', require('./routes/relatorios.routes'));
+app.use('/api/lgpd', require('./routes/lgpd.routes'));
 
 app.use(naoEncontrado);
 app.use(tratadorDeErros);

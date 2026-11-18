@@ -8,10 +8,17 @@ CREATE DATABASE IF NOT EXISTS climora;
 USE climora;
 
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS log_auditoria;
+DROP TABLE IF EXISTS configuracao_modelo_colheita;
 DROP TABLE IF EXISTS alerta;
+DROP TABLE IF EXISTS previsao_colheita;
+DROP TABLE IF EXISTS previsao_temperatura;
+DROP TABLE IF EXISTS climapi_ponto;
+DROP TABLE IF EXISTS climapi_coleta;
 DROP TABLE IF EXISTS leitura_climatica;
 DROP TABLE IF EXISTS sensor;
 DROP TABLE IF EXISTS setor;
+DROP TABLE IF EXISTS mercado;
 DROP TABLE IF EXISTS usuario_propriedade;
 DROP TABLE IF EXISTS fruta;
 DROP TABLE IF EXISTS propriedade;
@@ -27,12 +34,50 @@ CREATE TABLE usuario (
   nome            VARCHAR(100)  NOT NULL,
   email           VARCHAR(150)  NOT NULL,
   senha_hash      VARCHAR(255)  NOT NULL,            -- nunca guardar senha pura
-  perfil          ENUM('PRODUTOR','ADMIN') NOT NULL DEFAULT 'PRODUTOR',
+  perfil          ENUM('PRODUTOR','ANALISTA','ADMIN') NOT NULL DEFAULT 'PRODUTOR',
   ativo           BOOLEAN       NOT NULL DEFAULT TRUE,
   ultimo_login_em DATETIME      NULL,
   criado_em       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id_usuario),
   UNIQUE KEY uq_usuario_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE configuracao_modelo_colheita (
+  id_modelo       TINYINT UNSIGNED NOT NULL,
+  peso_clima      DECIMAL(4,3) NOT NULL DEFAULT 0.700,
+  limiar_colher   TINYINT UNSIGNED NOT NULL DEFAULT 75,
+  limiar_monitorar TINYINT UNSIGNED NOT NULL DEFAULT 45,
+  atualizado_por  INT UNSIGNED NULL,
+  atualizado_em   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_modelo),
+  CONSTRAINT ck_modelo_colheita_unico CHECK (id_modelo = 1),
+  CONSTRAINT ck_modelo_peso_clima CHECK (peso_clima >= 0 AND peso_clima <= 1),
+  CONSTRAINT ck_modelo_limites CHECK (
+    limiar_colher <= 100
+    AND limiar_monitorar < limiar_colher
+  ),
+  CONSTRAINT fk_modelo_atualizado_por
+    FOREIGN KEY (atualizado_por) REFERENCES usuario (id_usuario)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO configuracao_modelo_colheita (id_modelo, peso_clima, limiar_colher, limiar_monitorar)
+VALUES (1, 0.700, 75, 45);
+
+CREATE TABLE log_auditoria (
+  id_log_auditoria BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_usuario      INT UNSIGNED NULL,
+  acao            VARCHAR(80) NOT NULL,
+  sucesso         BOOLEAN NOT NULL DEFAULT TRUE,
+  detalhe         TEXT NULL,
+  ip_origem       VARCHAR(45) NULL,
+  criado_em       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_log_auditoria),
+  KEY idx_log_auditoria_criado (criado_em),
+  KEY idx_log_auditoria_sucesso (sucesso, criado_em),
+  CONSTRAINT fk_log_auditoria_usuario
+    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
@@ -68,6 +113,30 @@ CREATE TABLE usuario_propriedade (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE climapi_coleta (
+  id_coleta      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_propriedade INT UNSIGNED    NOT NULL,
+  variavel       VARCHAR(60)     NOT NULL,
+  execucao       VARCHAR(40)     NOT NULL,
+  coletado_em    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resposta       JSON            NOT NULL,
+  PRIMARY KEY (id_coleta),
+  UNIQUE KEY uq_coleta (id_propriedade, variavel, execucao),
+  CONSTRAINT fk_coleta_propriedade
+    FOREIGN KEY (id_propriedade) REFERENCES propriedade (id_propriedade)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE climapi_ponto (
+  id_coleta   BIGINT UNSIGNED NOT NULL,
+  valido_para DATETIME        NOT NULL,
+  valor       DECIMAL(14,4)   NOT NULL,
+  PRIMARY KEY (id_coleta, valido_para),
+  CONSTRAINT fk_ponto_coleta
+    FOREIGN KEY (id_coleta) REFERENCES climapi_coleta (id_coleta)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------
 -- 4. FRUTA (cultura)
 -- Guarda tambem a faixa ideal de temperatura e umidade, que e usada
@@ -88,7 +157,26 @@ CREATE TABLE fruta (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- 5. SETOR
+-- 5. MERCADO
+-- Dados de preços e demanda de exportação da cultura.
+-- ---------------------------------------------------------------------
+CREATE TABLE mercado (
+  id_mercado       INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_fruta         INT UNSIGNED NOT NULL,
+  preco_referencia DECIMAL(10,2) NOT NULL,
+  indice_demanda   TINYINT UNSIGNED NOT NULL,
+  origem           ENUM('SIMULADO','EXTERNO') NOT NULL DEFAULT 'SIMULADO',
+  registrado_em    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_mercado),
+  KEY idx_mercado_fruta_data (id_fruta, registrado_em),
+  CONSTRAINT fk_mercado_fruta
+    FOREIGN KEY (id_fruta) REFERENCES fruta (id_fruta)
+    ON DELETE CASCADE,
+  CONSTRAINT ck_mercado_demanda CHECK (indice_demanda BETWEEN 0 AND 100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 6. SETOR
 -- Area da propriedade plantada com uma fruta (talhao).
 -- ---------------------------------------------------------------------
 CREATE TABLE setor (
@@ -126,6 +214,56 @@ CREATE TABLE sensor (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE previsao_temperatura (
+  id_previsao          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_sensor            INT UNSIGNED    NOT NULL,
+  gerada_em            DATETIME        NOT NULL,
+  valida_para          DATETIME        NOT NULL,
+  horizonte_h          SMALLINT UNSIGNED NOT NULL,
+  temperatura_prevista DECIMAL(5,2)    NOT NULL,
+  temperatura_real     DECIMAL(5,2)    NULL,
+  modelo               VARCHAR(60)     NOT NULL,
+  PRIMARY KEY (id_previsao),
+  UNIQUE KEY uq_previsao (id_sensor, gerada_em, horizonte_h, modelo),
+  KEY idx_previsao_valida (id_sensor, valida_para),
+  CONSTRAINT fk_previsao_sensor
+    FOREIGN KEY (id_sensor) REFERENCES sensor (id_sensor)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE previsao_colheita (
+  id_previsao_colheita BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_fruta             INT UNSIGNED NULL,
+  fruta_nome           VARCHAR(60) NOT NULL,
+  id_usuario           INT UNSIGNED NULL,
+  id_sensor            INT UNSIGNED NULL,
+  pontuacao_clima      TINYINT UNSIGNED NOT NULL,
+  pontuacao_mercado    TINYINT UNSIGNED NOT NULL,
+  pontuacao_combinada  TINYINT UNSIGNED NOT NULL,
+  recomendacao         ENUM('colher_agora','monitorar','aguardar') NOT NULL,
+  dias_estimados       SMALLINT UNSIGNED NOT NULL,
+  janela_inicio        DATETIME NOT NULL,
+  janela_fim           DATETIME NOT NULL,
+  justificativa        TEXT NOT NULL,
+  gerada_em            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_previsao_colheita),
+  KEY idx_previsao_colheita_fruta_data (id_fruta, gerada_em),
+  CONSTRAINT fk_previsao_colheita_fruta
+    FOREIGN KEY (id_fruta) REFERENCES fruta (id_fruta)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_previsao_colheita_usuario
+    FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_previsao_colheita_sensor
+    FOREIGN KEY (id_sensor) REFERENCES sensor (id_sensor)
+    ON DELETE SET NULL,
+  CONSTRAINT ck_previsao_colheita_pontuacoes CHECK (
+    pontuacao_clima <= 100
+    AND pontuacao_mercado <= 100
+    AND pontuacao_combinada <= 100
+  )
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------
 -- 7. LEITURA_CLIMATICA
 -- Cada medicao de temperatura e umidade feita por um sensor.
@@ -157,7 +295,8 @@ CREATE TABLE alerta (
   id_sensor  INT UNSIGNED NOT NULL,
   id_leitura BIGINT UNSIGNED NULL,
   tipo       ENUM('TEMPERATURA_ALTA','TEMPERATURA_BAIXA',
-                  'UMIDADE_ALTA','UMIDADE_BAIXA','SENSOR_OFFLINE') NOT NULL,
+                  'UMIDADE_ALTA','UMIDADE_BAIXA','SENSOR_OFFLINE',
+                  'JANELA_COLHEITA_IDEAL') NOT NULL,
   severidade ENUM('BAIXA','MEDIA','ALTA') NOT NULL DEFAULT 'MEDIA',
   mensagem   VARCHAR(255) NOT NULL,
   lido       BOOLEAN      NOT NULL DEFAULT FALSE,
