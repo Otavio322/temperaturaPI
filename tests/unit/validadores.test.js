@@ -8,16 +8,26 @@ const assert = require('node:assert/strict');
 const schemas = require('../../src/validators');
 
 test('registrar rejeita campo extra (perfil) — não dá pra se autopromover a admin', () => {
-  const r = schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', senha: 'SenhaForte123', perfil: 'ADMIN' });
+  const r = schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', cnpj: '11.222.333/0001-81', senha: 'SenhaForte123', perfil: 'ADMIN' });
   assert.equal(r.success, false);
 });
 
 test('registrar rejeita senha fraca', () => {
-  assert.equal(schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', senha: 'abc' }).success, false);
+  assert.equal(schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', cnpj: '11222333000181', senha: 'abc' }).success, false);
 });
 
-test('registrar aceita payload válido', () => {
-  assert.equal(schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', senha: 'SenhaForte123' }).success, true);
+test('registrar aceita payload válido e guarda o CNPJ só com dígitos', () => {
+  const r = schemas.registrar.safeParse({ nome: 'Ana', email: 'a@x.com', cnpj: '11.222.333/0001-81', senha: 'SenhaForte123' });
+  assert.equal(r.success, true);
+  assert.equal(r.data.cnpj, '11222333000181');
+});
+
+test('registrar exige CNPJ válido (dígitos verificadores)', () => {
+  const base = { nome: 'Ana', email: 'a@x.com', senha: 'SenhaForte123' };
+  assert.equal(schemas.registrar.safeParse(base).success, false);
+  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '11222333000180' }).success, false);
+  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '11111111111111' }).success, false);
+  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '123' }).success, false);
 });
 
 test('criarUsuario aceita o perfil de analista', () => {

@@ -13,10 +13,10 @@ const HASH_FALSO = bcrypt.hashSync('senha-falsa-Xx123456', 10);
 
 router.post('/registrar', limitadorAutenticacao, validar(schemas.registrar), assincrono(async (req, res) => {
   if (!env.permiteCadastroPublico) throw new ErroHttp(403, 'Cadastro público desativado. Peça a um administrador.');
-  const { nome, email, senha } = req.body;
+  const { nome, email, cnpj, senha } = req.body;
   if (await usuariosRepo.emailEmUso(email)) throw new ErroHttp(409, 'Já existe uma conta com esse e-mail');
   const senhaHash = await bcrypt.hash(senha, 12);
-  const usuario = await usuariosRepo.criar({ nome, email, senhaHash, perfil: 'PRODUTOR' });
+  const usuario = await usuariosRepo.criar({ nome, email, cnpj, senhaHash, perfil: 'PRODUTOR' });
   res.status(201).json({ token: assinarToken(usuario), usuario });
 }));
 

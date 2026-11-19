@@ -1,11 +1,11 @@
 const { pool } = require('../config/db');
 
-const CAMPOS_PUBLICOS = 'id_usuario, nome, email, perfil, ativo, ultimo_login_em, criado_em';
+const CAMPOS_PUBLICOS = 'id_usuario, nome, email, cnpj, perfil, ativo, ultimo_login_em, criado_em';
 
-async function criar({ nome, email, senhaHash, perfil }) {
+async function criar({ nome, email, cnpj = null, senhaHash, perfil }) {
   const [resultado] = await pool.execute(
-    'INSERT INTO usuario (nome, email, senha_hash, perfil) VALUES (:nome, :email, :senhaHash, :perfil)',
-    { nome, email, senhaHash, perfil }
+    'INSERT INTO usuario (nome, email, cnpj, senha_hash, perfil) VALUES (:nome, :email, :cnpj, :senhaHash, :perfil)',
+    { nome, email, cnpj, senhaHash, perfil }
   );
   return buscarPorId(resultado.insertId);
 }

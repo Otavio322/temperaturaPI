@@ -33,13 +33,15 @@ CREATE TABLE usuario (
   id_usuario      INT UNSIGNED  NOT NULL AUTO_INCREMENT,
   nome            VARCHAR(100)  NOT NULL,
   email           VARCHAR(150)  NOT NULL,
+  cnpj            CHAR(14)      NULL,                -- só dígitos; NULL em contas criadas pelo admin
   senha_hash      VARCHAR(255)  NOT NULL,            -- nunca guardar senha pura
   perfil          ENUM('PRODUTOR','ANALISTA','ADMIN') NOT NULL DEFAULT 'PRODUTOR',
   ativo           BOOLEAN       NOT NULL DEFAULT TRUE,
   ultimo_login_em DATETIME      NULL,
   criado_em       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id_usuario),
-  UNIQUE KEY uq_usuario_email (email)
+  UNIQUE KEY uq_usuario_email (email),
+  KEY idx_usuario_cnpj (cnpj)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE configuracao_modelo_colheita (

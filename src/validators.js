@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { somenteDigitos, cnpjValido } = require('./utils/cnpj');
 
 const idInteiro = z.coerce.number().int().positive();
 const email = z.string().trim().toLowerCase().email('E-mail inválido').max(150);
@@ -10,6 +11,10 @@ const senha = z
   .regex(/[a-z]/, 'A senha precisa ter uma letra minúscula')
   .regex(/[A-Z]/, 'A senha precisa ter uma letra maiúscula')
   .regex(/\d/, 'A senha precisa ter um número');
+const cnpj = z
+  .string()
+  .transform(somenteDigitos)
+  .refine(cnpjValido, 'CNPJ inválido');
 const perfil = z.enum(['PRODUTOR', 'ANALISTA', 'ADMIN']);
 
 const frutaBase = z
@@ -131,7 +136,7 @@ const readingsQuery = z.object({
 const accountDelete = z.object({ confirm: z.boolean().optional() }).strict();
 
 module.exports = {
-  registrar: z.object({ nome, email, senha }).strict(),
+  registrar: z.object({ nome, email, cnpj, senha }).strict(),
   login: z.object({ email, senha: z.string().min(1).max(128) }).strict(),
   trocarSenha: z.object({ senhaAtual: z.string().min(1).max(128), novaSenha: senha }).strict(),
 
