@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { somenteDigitos, cnpjValido } = require('./utils/cnpj');
+const { somenteDigitos } = require('./utils/cnpj');
 
 const idInteiro = z.coerce.number().int().positive();
 const email = z.string().trim().toLowerCase().email('E-mail inválido').max(150);
@@ -14,7 +14,7 @@ const senha = z
 const cnpj = z
   .string()
   .transform(somenteDigitos)
-  .refine(cnpjValido, 'CNPJ inválido');
+  .refine((v) => v.length === 14, 'CNPJ inválido');
 const perfil = z.enum(['PRODUTOR', 'ANALISTA', 'ADMIN']);
 
 const frutaBase = z
