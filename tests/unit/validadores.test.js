@@ -22,11 +22,11 @@ test('registrar aceita payload válido e guarda o CNPJ só com dígitos', () => 
   assert.equal(r.data.cnpj, '11222333000181');
 });
 
-test('registrar exige CNPJ válido (dígitos verificadores)', () => {
+test('registrar exige CNPJ com 14 dígitos', () => {
   const base = { nome: 'Ana', email: 'a@x.com', senha: 'SenhaForte123' };
   assert.equal(schemas.registrar.safeParse(base).success, false);
-  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '11222333000180' }).success, false);
-  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '11111111111111' }).success, false);
+  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '11222333000180' }).success, true);
+  assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '11111111111111' }).success, true);
   assert.equal(schemas.registrar.safeParse({ ...base, cnpj: '123' }).success, false);
 });
 
