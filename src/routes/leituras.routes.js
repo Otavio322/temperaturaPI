@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const sensoresRepo = require('../repositorios/sensores');
 const leiturasRepo = require('../repositorios/leituras');
+const { buscarHistorico, ErroThingSpeak } = require('../services/thingspeak');
 const propriedadesRepo = require('../repositorios/propriedades');
 const schemas = require('../validators');
 const { validar, idValido } = require('../middleware/validate');
@@ -29,6 +30,23 @@ router.get('/:idSensor', idValido('idSensor'), validar(schemas.consultaLeituras,
     sensor: { id_sensor: sensor.id_sensor, codigo: sensor.codigo, setor_codigo: sensor.setor_codigo },
     fruta: { nome: sensor.fruta_nome, temp_min: sensor.temp_min, temp_max: sensor.temp_max, umidade_min: sensor.umidade_min, umidade_max: sensor.umidade_max },
     leituras,
+  });
+}));
+
+router.get('/:idSensor/thingspeak', idValido('idSensor'), assincrono(async (req, res) => {
+  const sensor = await buscarSensorComAcesso(req, Number(req.params.idSensor));
+  if (!sensor.thingspeak_channel_id) throw new ErroHttp(409, 'Sensor sem canal ThingSpeak configurado');
+  let historico;
+  try {
+    historico = await buscarHistorico(sensor);
+  } catch (erro) {
+    if (erro instanceof ErroThingSpeak) throw new ErroHttp(502, erro.message);
+    throw erro;
+  }
+  res.json({
+    sensor: { id_sensor: sensor.id_sensor, codigo: sensor.codigo, setor_codigo: sensor.setor_codigo },
+    fruta: { nome: sensor.fruta_nome, temp_min: sensor.temp_min, temp_max: sensor.temp_max, umidade_min: sensor.umidade_min, umidade_max: sensor.umidade_max },
+    ...historico,
   });
 }));
 
